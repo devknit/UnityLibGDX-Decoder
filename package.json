@@ -1,0 +1,11 @@
+{
+  "name": "com.devknit.libgdx.decoder",
+  "displayName": "Knit LibGDX-Decoder",
+  "version": "0.0.1",
+  "unity": "2023.2",
+  "author": {
+    "name": "Knit",
+    "email": "devknit.yua@gmail.com",
+    "url": "https://github.com/devknit"
+  }
+}
