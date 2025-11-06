@@ -1,6 +1,7 @@
 ﻿
 using System;
 using System.IO;
+using System.IO.Compression;
 using UnityEngine;
 using UnityEditor;
 	
@@ -16,11 +17,32 @@ namespace LibGDX.Decoder
 				string assetPath = AssetDatabase.GUIDToAssetPath( assetGUID);
 				string extension = Path.GetExtension( assetPath);
 				
-				if( extension == ".cim")
+				// if( extension == ".cim")
 				{
 					ToPng( assetPath, Path.ChangeExtension( assetPath, ".png"));
 				}
 			}
+		}
+		static byte[] DecompressZlib( byte[] data)
+		{
+			using( var input = new MemoryStream( data))
+			{
+				input.ReadByte(); // 0x78
+				input.ReadByte(); // 0x9C
+				using( var deflate = new DeflateStream( input, CompressionMode.Decompress))
+				using( var output = new MemoryStream())
+				{
+					deflate.CopyTo( output);
+					return output.ToArray();
+				}
+			}
+		}
+		static int Reverse( int value)
+		{
+			return	(value & 0xff) << 24
+				|	((value >> 8) & 0xff) << 16
+				|	((value >> 16) & 0xff) << 8
+				|	((value >> 24) & 0xff);
 		}
 		static void ToPng( string cimPath, string outputPngPath)
 		{
@@ -30,15 +52,16 @@ namespace LibGDX.Decoder
 				return;
 			}
 			byte[] fileBytes = File.ReadAllBytes( cimPath);
+			fileBytes = DecompressZlib( fileBytes);
 			
 			using( var reader = new BinaryReader( new MemoryStream( fileBytes)))
 			{
-				int version = reader.ReadInt32();
-				int width = reader.ReadInt32();
-				int height = reader.ReadInt32();
-				int formatOrdinal = reader.ReadInt32();
-				byte[] pixelBytes = reader.ReadBytes( 
-					(int)(reader.BaseStream.Length - reader.BaseStream.Position));
+				// int version = reader.ReadInt32();
+				int width = Reverse( reader.ReadInt32());
+				int height = Reverse( reader.ReadInt32());
+				int formatOrdinal = Reverse( reader.ReadInt32());
+				int pixelLength = (int)(reader.BaseStream.Length - reader.BaseStream.Position);
+				byte[] pixelBytes = reader.ReadBytes( pixelLength);
 				
 				if( GZip.IsCompressed( pixelBytes) != false)
 				{
@@ -57,108 +80,115 @@ namespace LibGDX.Decoder
 		static byte[] ToRGBA( byte[] src, int width, int height, int format)
 		{
 			int pixelCount = width * height;
-			byte[] dst = new byte[pixelCount * 4];
+			var dst = new byte[ pixelCount * 4];
 			int srcIndex = 0, dstIndex = 0;
 			
-			switch( format)
+			if( src.Length == dst.Length)
 			{
-				/* Alpha */
-				case 0:
+				Buffer.BlockCopy( src, 0, dst, 0, Math.Min( src.Length, dst.Length));
+			}
+			else
+			{
+				switch( format)
 				{
-					for( int i0 = 0; i0 < pixelCount; ++i0)
+					/* Alpha */
+					case 0:
 					{
-						byte alpha = src[ srcIndex++];
-						dst[ dstIndex++] = 255;
-						dst[ dstIndex++] = 255;
-						dst[ dstIndex++] = 255;
-						dst[ dstIndex++] = alpha;
+						for( int i0 = 0; i0 < pixelCount; ++i0)
+						{
+							byte alpha = src[ srcIndex++];
+							dst[ dstIndex++] = 255;
+							dst[ dstIndex++] = 255;
+							dst[ dstIndex++] = 255;
+							dst[ dstIndex++] = alpha;
+						}
+						break;
 					}
-					break;
-				}
-				/* Intensity */
-				case 1:
-				{
-					for( int i0 = 0; i0 < pixelCount; ++i0)
+					/* Intensity */
+					case 1:
 					{
-						byte color = src[ srcIndex++];
-						dst[ dstIndex++] = color;
-						dst[ dstIndex++] = color;
-						dst[ dstIndex++] = color;
-						dst[ dstIndex++] = 255;
+						for( int i0 = 0; i0 < pixelCount; ++i0)
+						{
+							byte color = src[ srcIndex++];
+							dst[ dstIndex++] = color;
+							dst[ dstIndex++] = color;
+							dst[ dstIndex++] = color;
+							dst[ dstIndex++] = 255;
+						}
+						break;
 					}
-					break;
-				}
-				/* LuminanceAlpha */
-				case 2:
-				{
-					for( int i0 = 0; i0 < pixelCount; ++i0)
+					/* LuminanceAlpha */
+					case 2:
 					{
-						byte color = src[ srcIndex++];
-						byte alpha = src[ srcIndex++];
-						dst[ dstIndex++] = color;
-						dst[ dstIndex++] = color;
-						dst[ dstIndex++] = color;
-						dst[ dstIndex++] = alpha;
+						for( int i0 = 0; i0 < pixelCount; ++i0)
+						{
+							byte color = src[ srcIndex++];
+							byte alpha = src[ srcIndex++];
+							dst[ dstIndex++] = color;
+							dst[ dstIndex++] = color;
+							dst[ dstIndex++] = color;
+							dst[ dstIndex++] = alpha;
+						}
+						break;
 					}
-					break;
-				}
-				/* RGB565 */
-				case 3:
-				{
-					for( int i0 = 0; i0 < pixelCount; ++i0)
+					/* RGB565 */
+					case 3:
 					{
-						ushort value = (ushort)(src[ srcIndex++] | (src[ srcIndex++] << 8));
-						byte r = (byte)(((value >> 11) & 0x1f) * 255 / 31);
-						byte g = (byte)(((value >> 5) & 0x3f) * 255 / 63);
-						byte b = (byte)((value & 0x1f) * 255 / 31);
-						dst[ dstIndex++] = r;
-						dst[ dstIndex++] = g;
-						dst[ dstIndex++] = b;
-						dst[ dstIndex++] = 255;
+						for( int i0 = 0; i0 < pixelCount; ++i0)
+						{
+							ushort value = (ushort)(src[ srcIndex++] | (src[ srcIndex++] << 8));
+							byte r = (byte)(((value >> 11) & 0x1f) * 255 / 31);
+							byte g = (byte)(((value >> 5) & 0x3f) * 255 / 63);
+							byte b = (byte)((value & 0x1f) * 255 / 31);
+							dst[ dstIndex++] = r;
+							dst[ dstIndex++] = g;
+							dst[ dstIndex++] = b;
+							dst[ dstIndex++] = 255;
+						}
+						break;
 					}
-					break;
-				}
-				/* RGBA4444 */
-				case 4:
-				{
-					for( int i0 = 0; i0 < pixelCount; ++i0)
+					/* RGBA4444 */
+					case 4:
 					{
-						ushort value = (ushort)(src[ srcIndex++] | (src[ srcIndex++] << 8));
-						byte r = (byte)(((value >> 12) & 0xf) * 17);
-						byte g = (byte)(((value >> 8) & 0xf) * 17);
-						byte b = (byte)(((value >> 4) & 0xf) * 17);
-						byte a = (byte)((value & 0xf) * 17);
-						dst[ dstIndex++] = r;
-						dst[ dstIndex++] = g;
-						dst[ dstIndex++] = b;
-						dst[ dstIndex++] = a;
+						for( int i0 = 0; i0 < pixelCount; ++i0)
+						{
+							ushort value = (ushort)(src[ srcIndex++] << 8 | (src[ srcIndex++]));
+							byte r = (byte)(((value >> 12) & 0xf) * 17);
+							byte g = (byte)(((value >> 8) & 0xf) * 17);
+							byte b = (byte)(((value >> 4) & 0xf) * 17);
+							byte a = (byte)((value & 0xf) * 17);
+							dst[ dstIndex++] = r;
+							dst[ dstIndex++] = g;
+							dst[ dstIndex++] = b;
+							dst[ dstIndex++] = a;
+						}
+						break;
 					}
-					break;
-				}
-				/* RGB888 */
-				case 5:
-				{
-					for( int i0 = 0; i0 < pixelCount; ++i0)
+					/* RGB888 */
+					case 5:
 					{
-						byte r = src[ srcIndex++];
-						byte g = src[ srcIndex++];
-						byte b = src[ srcIndex++];
-						dst[ dstIndex++] = r;
-						dst[ dstIndex++] = g;
-						dst[ dstIndex++] = b;
-						dst[ dstIndex++] = 255;
+						for( int i0 = 0; i0 < pixelCount; ++i0)
+						{
+							byte r = src[ srcIndex++];
+							byte g = src[ srcIndex++];
+							byte b = src[ srcIndex++];
+							dst[ dstIndex++] = r;
+							dst[ dstIndex++] = g;
+							dst[ dstIndex++] = b;
+							dst[ dstIndex++] = 255;
+						}
+						break;
 					}
-					break;
-				}
-				/* RGBA8888 */
-				case 6:
-				{
-					Buffer.BlockCopy( src, 0, dst, 0, Math.Min( src.Length, dst.Length));
-					break;
-				}
-				default:
-				{
-					throw new Exception( $"Unknown Pixmap.Format. ordinal: {format}");
+					/* RGBA8888 */
+					case 6:
+					{
+						Buffer.BlockCopy( src, 0, dst, 0, Math.Min( src.Length, dst.Length));
+						break;
+					}
+					default:
+					{
+						throw new Exception( $"Unknown Pixmap.Format. ordinal: {format}");
+					}
 				}
 			}
 			return dst;

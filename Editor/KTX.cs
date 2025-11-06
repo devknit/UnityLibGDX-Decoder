@@ -8,19 +8,26 @@ namespace LibGDX.Decoder
 {
 	public static class KTX
 	{
-		[MenuItem( "Assets/Create/LibGDX Decoder/KTX to PNG")]
+		[MenuItem("Assets/Create/LibGDX Decoder/KTX to PNG")]
 		static void KTXtoPNG()
 		{
-			foreach( var assetGUID in Selection.assetGUIDs)
+			foreach (var assetGUID in Selection.assetGUIDs)
 			{
-				string assetPath = AssetDatabase.GUIDToAssetPath( assetGUID);
-				string extension = Path.GetExtension( assetPath);
-				
-				if( extension == ".ktx" || extension == ".zktx")
+				string assetPath = AssetDatabase.GUIDToAssetPath(assetGUID);
+				string extension = Path.GetExtension(assetPath);
+
+				// if (extension == ".ktx" || extension == ".zktx")
 				{
-					ToPng( assetPath, Path.ChangeExtension( assetPath, ".png"));
+					ToPng(assetPath, Path.ChangeExtension(assetPath, ".png"));
 				}
 			}
+		}
+		static uint Reverse( uint value)
+		{
+			return	(value & 0xff) << 24
+				|	((value >> 8) & 0xff) << 16
+				|	((value >> 16) & 0xff) << 8
+				|	((value >> 24) & 0xff);
 		}
 		static void ToPng( string ktxPath, string outputPngPath)
 		{
@@ -31,12 +38,13 @@ namespace LibGDX.Decoder
 			}
 			byte[] fileBytes = File.ReadAllBytes( ktxPath);
 			
-			if( GZip.IsCompressed( fileBytes) != false)
+			// if( GZip.IsCompressed( fileBytes) != false)
 			{
 				fileBytes = GZip.Decompress( fileBytes);
 			}
 			using( var reader = new BinaryReader( new MemoryStream( fileBytes)))
 			{
+				uint fileSize = reader.ReadUInt32();
 				string identifier = System.Text.Encoding.ASCII.GetString( reader.ReadBytes( 12));
 				if( identifier.Contains( "KTX") == false)
 				{
@@ -45,10 +53,6 @@ namespace LibGDX.Decoder
 				uint endianness = reader.ReadUInt32();
 				bool littleEndian = endianness == 0x04030201;
 				
-				if( littleEndian == false)
-				{
-					throw new NotSupportedException( "Big endian KTX not supported in this sample.");
-				}
 				uint glType = reader.ReadUInt32();
 				uint glTypeSize = reader.ReadUInt32();
 				uint glFormat = reader.ReadUInt32();
@@ -60,13 +64,33 @@ namespace LibGDX.Decoder
 				uint numberOfArrayElements = reader.ReadUInt32();
 				uint numberOfFaces = reader.ReadUInt32();
 				uint numberOfMipmapLevels  = reader.ReadUInt32();
-				uint bytesOfKeyValueData   = reader.ReadUInt32();
-				
+				uint bytesOfKeyValueData = reader.ReadUInt32();
+
+				if( littleEndian == false)
+				{
+					glType = Reverse( glType);
+					glTypeSize = Reverse( glTypeSize);
+					glFormat = Reverse( glFormat);
+					glInternalFormat = Reverse( glInternalFormat);
+					glBaseInternalFormat = Reverse( glBaseInternalFormat);
+					pixelWidth = Reverse( pixelWidth);
+					pixelHeight = Reverse( pixelHeight);
+					pixelDepth = Reverse( pixelDepth);
+					numberOfArrayElements = Reverse( numberOfArrayElements);
+					numberOfFaces = Reverse( numberOfFaces);
+					numberOfMipmapLevels = Reverse( numberOfMipmapLevels);
+					bytesOfKeyValueData = Reverse( bytesOfKeyValueData);
+				}
 				reader.BaseStream.Position += bytesOfKeyValueData;
 				uint imageSize = reader.ReadUInt32();
 				byte[] imageData = reader.ReadBytes( (int)imageSize);
 				Color32[] pixels = null;
 				
+				if( littleEndian == false)
+				{
+				
+					// throw new NotSupportedException( "Big endian KTX not supported in this sample.");
+				}
 				try
 				{
 					switch( glInternalFormat)
