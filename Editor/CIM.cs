@@ -17,7 +17,7 @@ namespace LibGDX.Decoder
 				string assetPath = AssetDatabase.GUIDToAssetPath( assetGUID);
 				string extension = Path.GetExtension( assetPath);
 				
-				// if( extension == ".cim")
+				if( extension == ".cim")
 				{
 					ToPng( assetPath, Path.ChangeExtension( assetPath, ".png"));
 				}
@@ -28,7 +28,7 @@ namespace LibGDX.Decoder
 			using( var input = new MemoryStream( data))
 			{
 				input.ReadByte(); // 0x78
-				input.ReadByte(); // 0x9C
+				input.ReadByte(); // 0x9c
 				using( var deflate = new DeflateStream( input, CompressionMode.Decompress))
 				using( var output = new MemoryStream())
 				{
@@ -56,7 +56,6 @@ namespace LibGDX.Decoder
 			
 			using( var reader = new BinaryReader( new MemoryStream( fileBytes)))
 			{
-				// int version = reader.ReadInt32();
 				int width = Reverse( reader.ReadInt32());
 				int height = Reverse( reader.ReadInt32());
 				int formatOrdinal = Reverse( reader.ReadInt32());
@@ -67,9 +66,10 @@ namespace LibGDX.Decoder
 				{
 					pixelBytes = GZip.Decompress( pixelBytes);
 				}
-				byte[] rgba = ToRGBA( pixelBytes, width, height, formatOrdinal);
+				Color32[] pixels = ToRGBA( pixelBytes, width, height, formatOrdinal);
+				
 				var tex = new Texture2D( width, height, TextureFormat.RGBA32, false);
-				tex.LoadRawTextureData( rgba);
+				tex.SetPixels32( pixels);
 				tex.Apply();
 				
 				byte[] png = tex.EncodeToPNG();
@@ -77,112 +77,93 @@ namespace LibGDX.Decoder
 				Debug.Log( $"Converted {cimPath}, ({width}x{height}), {GetFormatName( formatOrdinal)}\n{outputPngPath}");
 			}
 		}
-		static byte[] ToRGBA( byte[] src, int width, int height, int format)
+		static void FlipVertical( Color32[] pixels, int width, int height)
 		{
-			int pixelCount = width * height;
-			var dst = new byte[ pixelCount * 4];
-			int srcIndex = 0, dstIndex = 0;
+			int half = height / 2;
 			
-			if( src.Length == dst.Length)
+			for( int y = 0; y < half; ++y)
 			{
-				Buffer.BlockCopy( src, 0, dst, 0, Math.Min( src.Length, dst.Length));
+				int yTop = y * width;
+				int yBottom = (height - 1 - y) * width;
+				
+				for( int x = 0; x < width; ++x)
+				{
+					Color32 temp = pixels[ yTop + x];
+					pixels[ yTop + x] = pixels[ yBottom + x];
+					pixels[ yBottom + x] = temp;
+				}
 			}
-			else
+		}
+		static Color32[] ToRGBA( byte[] src, int width, int height, int format)
+		{
+			var dst = new Color32[ width * height];
+			int dstIndex = 0;
+			
 			{
 				switch( format)
 				{
-					/* Alpha */
-					case 0:
-					{
-						for( int i0 = 0; i0 < pixelCount; ++i0)
-						{
-							byte alpha = src[ srcIndex++];
-							dst[ dstIndex++] = 255;
-							dst[ dstIndex++] = 255;
-							dst[ dstIndex++] = 255;
-							dst[ dstIndex++] = alpha;
-						}
-						break;
-					}
-					/* Intensity */
+					/* GDX2D_FORMAT_ALPHA  */
 					case 1:
 					{
-						for( int i0 = 0; i0 < pixelCount; ++i0)
+						for( int i0 = 0; i0 < src.Length; ++i0)
 						{
-							byte color = src[ srcIndex++];
-							dst[ dstIndex++] = color;
-							dst[ dstIndex++] = color;
-							dst[ dstIndex++] = color;
-							dst[ dstIndex++] = 255;
+							dst[ dstIndex++] = new Color32( 255, 255, 255, src[ i0]);
 						}
 						break;
 					}
-					/* LuminanceAlpha */
+					/* GDX2D_FORMAT_LUMINANCE_ALPHA  */
 					case 2:
 					{
-						for( int i0 = 0; i0 < pixelCount; ++i0)
+						for( int i0 = 0; i0 < src.Length; i0 += 2)
 						{
-							byte color = src[ srcIndex++];
-							byte alpha = src[ srcIndex++];
-							dst[ dstIndex++] = color;
-							dst[ dstIndex++] = color;
-							dst[ dstIndex++] = color;
-							dst[ dstIndex++] = alpha;
+							dst[ dstIndex++] = new Color32( src[ i0 + 0], src[ i0 + 0], src[ i0 + 0], src[ i0 + 1]);
 						}
 						break;
 					}
-					/* RGB565 */
+					/* GDX2D_FORMAT_RGB888  */
 					case 3:
 					{
-						for( int i0 = 0; i0 < pixelCount; ++i0)
+						for( int i0 = 0; i0 < src.Length; i0 += 3)
 						{
-							ushort value = (ushort)(src[ srcIndex++] | (src[ srcIndex++] << 8));
-							byte r = (byte)(((value >> 11) & 0x1f) * 255 / 31);
-							byte g = (byte)(((value >> 5) & 0x3f) * 255 / 63);
-							byte b = (byte)((value & 0x1f) * 255 / 31);
-							dst[ dstIndex++] = r;
-							dst[ dstIndex++] = g;
-							dst[ dstIndex++] = b;
-							dst[ dstIndex++] = 255;
+							dst[ dstIndex++] = new Color32( src[ i0 + 0], src[ i0 + 1], src[ i0 + 2], 255);
 						}
 						break;
 					}
-					/* RGBA4444 */
+					/* GDX2D_FORMAT_RGBA8888  */
 					case 4:
 					{
-						for( int i0 = 0; i0 < pixelCount; ++i0)
+						for( int i0 = 0; i0 < src.Length; i0 += 4)
 						{
-							ushort value = (ushort)(src[ srcIndex++] << 8 | (src[ srcIndex++]));
-							byte r = (byte)(((value >> 12) & 0xf) * 17);
-							byte g = (byte)(((value >> 8) & 0xf) * 17);
-							byte b = (byte)(((value >> 4) & 0xf) * 17);
-							byte a = (byte)((value & 0xf) * 17);
-							dst[ dstIndex++] = r;
-							dst[ dstIndex++] = g;
-							dst[ dstIndex++] = b;
-							dst[ dstIndex++] = a;
+							dst[ dstIndex++] = new Color32( src[ i0 + 0], src[ i0 + 1], src[ i0 + 2], src[ i0 + 3]);
 						}
 						break;
 					}
-					/* RGB888 */
+					/* GDX2D_FORMAT_RGB565  */
 					case 5:
 					{
-						for( int i0 = 0; i0 < pixelCount; ++i0)
+						for( int i0 = 0; i0 < src.Length; i0 += 2)
 						{
-							byte r = src[ srcIndex++];
-							byte g = src[ srcIndex++];
-							byte b = src[ srcIndex++];
-							dst[ dstIndex++] = r;
-							dst[ dstIndex++] = g;
-							dst[ dstIndex++] = b;
-							dst[ dstIndex++] = 255;
+							ushort packed = BitConverter.ToUInt16( src, i0);
+							dst[ dstIndex++] = new Color32( 
+								(byte)(((packed >> 11) & 0x1f) * 255 / 31), 
+								(byte)(((packed >> 5) & 0x3f) * 255 / 63), 
+								(byte)((packed & 0x1f) * 255 / 31), 
+								255);
 						}
 						break;
 					}
-					/* RGBA8888 */
+					/* GDX2D_FORMAT_RGBA4444  */
 					case 6:
 					{
-						Buffer.BlockCopy( src, 0, dst, 0, Math.Min( src.Length, dst.Length));
+						for( int i0 = 0; i0 < src.Length; i0 += 2)
+						{
+							ushort packed = BitConverter.ToUInt16( src, i0);
+							dst[ dstIndex++] = new Color32( 
+								(byte)(((packed >> 12) & 0xf) * 17), 
+								(byte)(((packed >> 8) & 0xf) * 17), 
+								(byte)(((packed >> 4) & 0xf) * 17), 
+								(byte)(((packed >> 4) & 0xf) * 17));
+						}
 						break;
 					}
 					default:
@@ -191,6 +172,7 @@ namespace LibGDX.Decoder
 					}
 				}
 			}
+			FlipVertical( dst, width, height);
 			return dst;
 		}
 		static string GetFormatName( int ordinal)
