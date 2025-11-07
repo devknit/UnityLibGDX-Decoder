@@ -23,28 +23,7 @@ namespace LibGDX.Decoder
 				}
 			}
 		}
-		static byte[] DecompressZlib( byte[] data)
-		{
-			using( var input = new MemoryStream( data))
-			{
-				input.ReadByte(); // 0x78
-				input.ReadByte(); // 0x9c
-				using( var deflate = new DeflateStream( input, CompressionMode.Decompress))
-				using( var output = new MemoryStream())
-				{
-					deflate.CopyTo( output);
-					return output.ToArray();
-				}
-			}
-		}
-		static int Reverse( int value)
-		{
-			return	(value & 0xff) << 24
-				|	((value >> 8) & 0xff) << 16
-				|	((value >> 16) & 0xff) << 8
-				|	((value >> 24) & 0xff);
-		}
-		static void ToPng( string cimPath, string outputPngPath)
+		public static void ToPng( string cimPath, string outputPngPath)
 		{
 			if( File.Exists( cimPath) == false)
 			{
@@ -56,9 +35,9 @@ namespace LibGDX.Decoder
 			
 			using( var reader = new BinaryReader( new MemoryStream( fileBytes)))
 			{
-				int width = Reverse( reader.ReadInt32());
-				int height = Reverse( reader.ReadInt32());
-				int formatOrdinal = Reverse( reader.ReadInt32());
+				int width = Endian.Reverse( reader.ReadInt32());
+				int height = Endian.Reverse( reader.ReadInt32());
+				int formatOrdinal = Endian.Reverse( reader.ReadInt32());
 				int pixelLength = (int)(reader.BaseStream.Length - reader.BaseStream.Position);
 				byte[] pixelBytes = reader.ReadBytes( pixelLength);
 				
@@ -74,7 +53,22 @@ namespace LibGDX.Decoder
 				
 				byte[] png = tex.EncodeToPNG();
 				File.WriteAllBytes( outputPngPath, png);
+				AssetDatabase.ImportAsset( outputPngPath);
 				Debug.Log( $"Converted {cimPath}, ({width}x{height}), {GetFormatName( formatOrdinal)}\n{outputPngPath}");
+			}
+		}
+		static byte[] DecompressZlib( byte[] data)
+		{
+			using( var input = new MemoryStream( data))
+			{
+				input.ReadByte(); // 0x78
+				input.ReadByte(); // 0x9c
+				using( var deflate = new DeflateStream( input, CompressionMode.Decompress))
+				using( var output = new MemoryStream())
+				{
+					deflate.CopyTo( output);
+					return output.ToArray();
+				}
 			}
 		}
 		static void FlipVertical( Color32[] pixels, int width, int height)

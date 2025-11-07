@@ -16,20 +16,13 @@ namespace LibGDX.Decoder
 				string assetPath = AssetDatabase.GUIDToAssetPath(assetGUID);
 				string extension = Path.GetExtension(assetPath);
 
-				// if (extension == ".ktx" || extension == ".zktx")
+				if (extension == ".ktx" || extension == ".zktx")
 				{
 					ToPng(assetPath, Path.ChangeExtension(assetPath, ".png"));
 				}
 			}
 		}
-		static uint Reverse( uint value)
-		{
-			return	(value & 0xff) << 24
-				|	((value >> 8) & 0xff) << 16
-				|	((value >> 16) & 0xff) << 8
-				|	((value >> 24) & 0xff);
-		}
-		static void ToPng( string ktxPath, string outputPngPath)
+		public static void ToPng( string ktxPath, string outputPngPath)
 		{
 			if( File.Exists( ktxPath) == false)
 			{
@@ -38,7 +31,7 @@ namespace LibGDX.Decoder
 			}
 			byte[] fileBytes = File.ReadAllBytes( ktxPath);
 			
-			// if( GZip.IsCompressed( fileBytes) != false)
+			if( GZip.IsCompressed( fileBytes) != false)
 			{
 				fileBytes = GZip.Decompress( fileBytes);
 			}
@@ -68,29 +61,24 @@ namespace LibGDX.Decoder
 
 				if( littleEndian == false)
 				{
-					glType = Reverse( glType);
-					glTypeSize = Reverse( glTypeSize);
-					glFormat = Reverse( glFormat);
-					glInternalFormat = Reverse( glInternalFormat);
-					glBaseInternalFormat = Reverse( glBaseInternalFormat);
-					pixelWidth = Reverse( pixelWidth);
-					pixelHeight = Reverse( pixelHeight);
-					pixelDepth = Reverse( pixelDepth);
-					numberOfArrayElements = Reverse( numberOfArrayElements);
-					numberOfFaces = Reverse( numberOfFaces);
-					numberOfMipmapLevels = Reverse( numberOfMipmapLevels);
-					bytesOfKeyValueData = Reverse( bytesOfKeyValueData);
+					glType = Endian.Reverse( glType);
+					glTypeSize = Endian.Reverse( glTypeSize);
+					glFormat = Endian.Reverse( glFormat);
+					glInternalFormat = Endian.Reverse( glInternalFormat);
+					glBaseInternalFormat = Endian.Reverse( glBaseInternalFormat);
+					pixelWidth = Endian.Reverse( pixelWidth);
+					pixelHeight = Endian.Reverse( pixelHeight);
+					pixelDepth = Endian.Reverse( pixelDepth);
+					numberOfArrayElements = Endian.Reverse( numberOfArrayElements);
+					numberOfFaces = Endian.Reverse( numberOfFaces);
+					numberOfMipmapLevels = Endian.Reverse( numberOfMipmapLevels);
+					bytesOfKeyValueData = Endian.Reverse( bytesOfKeyValueData);
 				}
 				reader.BaseStream.Position += bytesOfKeyValueData;
 				uint imageSize = reader.ReadUInt32();
 				byte[] imageData = reader.ReadBytes( (int)imageSize);
 				Color32[] pixels = null;
 				
-				if( littleEndian == false)
-				{
-				
-					// throw new NotSupportedException( "Big endian KTX not supported in this sample.");
-				}
 				try
 				{
 					switch( glInternalFormat)
