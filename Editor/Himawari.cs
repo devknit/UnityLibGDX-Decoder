@@ -1,9 +1,10 @@
 ﻿
 using System;
 using System.IO;
-using System.IO.Compression;
+using System.Linq;
 using UnityEngine;
 using UnityEditor;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEditor.U2D.Sprites;
 
@@ -26,11 +27,6 @@ namespace LibGDX.Decoder
 			SpriteOffset,
 			SpriteIndex,
 		};
-		static Vector2Int ParsePair( string value, int indexOf)
-		{
-			string[] parts = value.Substring( indexOf + 1).Split(',');
-			return new Vector2Int( int.Parse( parts[ 0]), int.Parse( parts[ 1]));
-		}
 		[MenuItem( "Assets/Create/Himawari/TXT to Sprites")]
 		static void TXTtoSprites()
 		{
@@ -43,18 +39,17 @@ namespace LibGDX.Decoder
 				if( string.IsNullOrEmpty( assetPath) == false)
 				{
 					string directory = Path.GetDirectoryName( assetPath);
+					var newSpriteRects = new List<SpriteRect>();
+					TextureImporter importer = null;
+					SpriteRect newSpriteRect = null;
 					
 					using( var reader = new StreamReader( assetPath))
 					{
-						TextureImporter importer = null;
-						var sprites = new List<SpriteRect>();
-						SpriteRect sprite = null;
-						string line;
-						
 						string imageAssetPath = string.Empty;
 						string imageAssetGUID = string.Empty;
 						string pngAssetPath = string.Empty;
 						string pngAssetGUID = string.Empty;
+						string line;
 						
 						while( (line = reader.ReadLine()) != null)
 						{
@@ -111,16 +106,19 @@ namespace LibGDX.Decoder
 								standalone.format = value switch
 								{
 									"RGBA8888" => TextureImporterFormat.RGBA32,
+									"RGBA4444" => TextureImporterFormat.RGBA16,
 									_ => throw new Exception( $"Invalid format. {value}")
 								};
 								android.format = value switch
 								{
 									"RGBA8888" => TextureImporterFormat.RGBA32,
+									"RGBA4444" => TextureImporterFormat.RGBA16,
 									_ => throw new Exception( $"Invalid format. {value}")
 								};
 								ios.format = value switch
 								{
 									"RGBA8888" => TextureImporterFormat.RGBA32,
+									"RGBA4444" => TextureImporterFormat.RGBA16,
 									_ => throw new Exception( $"Invalid format. {value}")
 								};
 							}
@@ -152,7 +150,7 @@ namespace LibGDX.Decoder
 							}
 							else if( line.Length > 0)
 							{
-								if( sprite != null)
+								if( newSpriteRect != null)
 								{
 									if( line.StartsWith( "  rotate:") != false)
 									{
@@ -163,7 +161,7 @@ namespace LibGDX.Decoder
 										string[] parts = line.Substring( line.IndexOf( ": ") + 2).Split( ',');
 										int x = int.Parse( parts[ 0]);
 										int y = int.Parse( parts[ 1]);
-										sprite.rect = new Rect( x, y, 0, 0);
+										newSpriteRect.rect = new Rect( x, y, 0, 0);
 									}
 									else if( line.StartsWith( "  size:") != false)
 									{
@@ -171,7 +169,7 @@ namespace LibGDX.Decoder
 										int width = int.Parse( parts[ 0]);
 										int height = int.Parse( parts[ 1]);
 										importer.GetSourceTextureWidthAndHeight( out int textureWidth, out int textureHeight);
-										sprite.rect = new Rect( sprite.rect.x, textureHeight - height - sprite.rect.y, width, height);
+										newSpriteRect.rect = new Rect( newSpriteRect.rect.x, textureHeight - height - newSpriteRect.rect.y, width, height);
 									}
 									else if( line.StartsWith( "  orig:") != false)
 									{
@@ -184,8 +182,8 @@ namespace LibGDX.Decoder
 									else if( line.StartsWith( "  index:") != false)
 									{
 										/* どういう風に扱うのか現段階では不明 */
-										sprites.Add( sprite);
-										sprite = null;
+										newSpriteRects.Add( newSpriteRect);
+										newSpriteRect = null;
 									}
 									else
 									{
@@ -194,15 +192,7 @@ namespace LibGDX.Decoder
 								}
 								else
 								{
-									var factory = new SpriteDataProviderFactories();
-									factory.Init();
-									var dataProvider = factory.GetSpriteEditorDataProviderFromObject( importer);
-									dataProvider.InitSpriteEditorDataProvider();
-									var spriteRects = dataProvider.GetSpriteRects();
-									
-									dataProvider.SetSpriteRects( spriteRects);
-								
-									sprite = new SpriteRect
+									newSpriteRect = new SpriteRect
 									{
 										name = line
 									};
@@ -210,35 +200,49 @@ namespace LibGDX.Decoder
 							}
 							else
 							{
-								importer.SaveAndReimport();
-								
-								if( sprites.Count > 0)
+								if( newSpriteRects.Count > 0)
 								{
-									var serializedObject = new SerializedObject( importer);
-									var spriteProperty = serializedObject.FindProperty( "m_SpriteSheet.m_Sprites");
-									spriteProperty.arraySize = sprites.Count;
+									var factory = new SpriteDataProviderFactories();
+									factory.Init();
+									var dataProvider = factory.GetSpriteEditorDataProviderFromObject( importer);
+									dataProvider.InitSpriteEditorDataProvider();
+									var currentSpriteRects = dataProvider.GetSpriteRects().ToDictionary( x => x.name, x => x);
 									
-									for( int i0 = 0; i0 < sprites.Count; ++i0)
+									foreach( var spriteRect in newSpriteRects)
 									{
-										var element = spriteProperty.GetArrayElementAtIndex( i0);
-
-										element.FindPropertyRelative( "m_Name").stringValue = sprites[ i0].name;
-										element.FindPropertyRelative( "m_Rect.x").floatValue = sprites[ i0].rect.x;
-										element.FindPropertyRelative( "m_Rect.y").floatValue = sprites[ i0].rect.y;
-										element.FindPropertyRelative( "m_Rect.width").floatValue = sprites[ i0].rect.width;
-										element.FindPropertyRelative( "m_Rect.height").floatValue = sprites[ i0].rect.height;
-										element.FindPropertyRelative( "m_Alignment").intValue = (int)SpriteAlignment.Center;
-										element.FindPropertyRelative( "m_Pivot.x").floatValue = 0.5f;
-										element.FindPropertyRelative( "m_Pivot.y").floatValue = 0.5f;
+										if( currentSpriteRects.TryGetValue( spriteRect.name, out var currentSpriteRect) != false)
+										{
+											spriteRect.spriteID = spriteRect.spriteID;
+										}
 									}
-									serializedObject.ApplyModifiedProperties();
-									AssetDatabase.ImportAsset( pngAssetPath, ImportAssetOptions.ForceUpdate);
+									dataProvider.SetSpriteRects( newSpriteRects.ToArray());
+									dataProvider.Apply();
 								}
+								importer.SaveAndReimport();
+								newSpriteRects.Clear();
 								importer = null;
-								return; // once
 							}
 						}
 					}
+					if( newSpriteRects.Count > 0)
+					{
+						var factory = new SpriteDataProviderFactories();
+						factory.Init();
+						var dataProvider = factory.GetSpriteEditorDataProviderFromObject( importer);
+						dataProvider.InitSpriteEditorDataProvider();
+						var currentSpriteRects = dataProvider.GetSpriteRects().ToDictionary( x => x.name, x => x);
+						
+						foreach( var spriteRect in newSpriteRects)
+						{
+							if( currentSpriteRects.TryGetValue( spriteRect.name, out var currentSpriteRect) != false)
+							{
+								spriteRect.spriteID = spriteRect.spriteID;
+							}
+						}
+						dataProvider.SetSpriteRects( newSpriteRects.ToArray());
+						dataProvider.Apply();
+					}
+					importer.SaveAndReimport();
 				}
 			}
 		}

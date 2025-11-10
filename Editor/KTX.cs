@@ -104,6 +104,7 @@ namespace LibGDX.Decoder
 						case 37496: /* COMPRESSED_RGBA8_ETC2_EAC */
 						{
 							pixels = ETC.Decode( imageData, (int)pixelWidth, (int)pixelHeight, glInternalFormat);
+							FlipVertical( pixels, (int)pixelWidth, (int)pixelHeight);
 							break;
 						}
 						case 33776: /* COMPRESSED_RGB_S3TC_DXT1_EXT */
@@ -220,6 +221,23 @@ namespace LibGDX.Decoder
 				dstPixels[ i0] = new Color32( r, g, b, 255);
 			}
 			return dstPixels;
+		}
+		public static void FlipVertical( Color32[] pixels, int width, int height)
+		{
+			int half = height / 2;
+			
+			for( int y = 0; y < half; ++y)
+			{
+				int yTop = y * width;
+				int yBottom = (height - 1 - y) * width;
+				
+				for( int x = 0; x < width; ++x)
+				{
+					Color32 temp = pixels[ yTop + x];
+					pixels[ yTop + x] = pixels[ yBottom + x];
+					pixels[ yBottom + x] = temp;
+				}
+			}
 		}
 	}
 }

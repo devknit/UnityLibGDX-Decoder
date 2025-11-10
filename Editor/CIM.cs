@@ -71,7 +71,7 @@ namespace LibGDX.Decoder
 				}
 			}
 		}
-		static void FlipVertical( Color32[] pixels, int width, int height)
+		public static void FlipVertical( Color32[] pixels, int width, int height)
 		{
 			int half = height / 2;
 			
@@ -156,7 +156,7 @@ namespace LibGDX.Decoder
 								(byte)(((packed >> 12) & 0xf) * 17), 
 								(byte)(((packed >> 8) & 0xf) * 17), 
 								(byte)(((packed >> 4) & 0xf) * 17), 
-								(byte)(((packed >> 4) & 0xf) * 17));
+								(byte)((packed & 0xf) * 17));
 						}
 						break;
 					}
